@@ -38,12 +38,13 @@ public final class ShortsFunnelService {
             File backgroundImage,
             Path jobDir,
             String lyricsHint,
-            String lyricsLanguage
+            String lyricsLanguage,
+            RenderTextOptions textOptions
     ) throws Exception {
         log("renderUploaded:start audio=" + hookAudio + " image=" + backgroundImage + " jobDir=" + jobDir);
         validateInputFiles(hookAudio, backgroundImage);
         Files.createDirectories(jobDir);
-        RenderResult result = render(hookAudio, backgroundImage, jobDir, lyricsHint, lyricsLanguage);
+        RenderResult result = render(hookAudio, backgroundImage, jobDir, lyricsHint, lyricsLanguage, textOptions);
         log("renderUploaded:done output=" + result.outputPath());
         return result;
     }
@@ -53,14 +54,15 @@ public final class ShortsFunnelService {
             String imagePath,
             Path outputDir,
             String lyricsHint,
-            String lyricsLanguage
+            String lyricsLanguage,
+            RenderTextOptions textOptions
     ) throws Exception {
         log("renderLocal:start audio=" + hookAudioPath + " image=" + imagePath + " outputDir=" + outputDir);
         File hookAudio = new File(hookAudioPath);
         File backgroundImage = new File(imagePath);
         validateInputFiles(hookAudio, backgroundImage);
         Files.createDirectories(outputDir);
-        RenderResult result = render(hookAudio, backgroundImage, outputDir, lyricsHint, lyricsLanguage);
+        RenderResult result = render(hookAudio, backgroundImage, outputDir, lyricsHint, lyricsLanguage, textOptions);
         log("renderLocal:done output=" + result.outputPath());
         return result;
     }
@@ -70,7 +72,8 @@ public final class ShortsFunnelService {
             File backgroundImage,
             Path outputDir,
             String lyricsHint,
-            String lyricsLanguage
+            String lyricsLanguage,
+            RenderTextOptions textOptions
     ) throws Exception {
         logProgress(0, "render:start");
         RenderPaths paths = RenderPaths.in(outputDir);
@@ -85,7 +88,7 @@ public final class ShortsFunnelService {
         List<TimedWord> displayWords = lyricCorrection.correctForDisplay(openAiApiKey, transcriptWords, lyricsHint, lyricsLanguage);
         logProgress(50, "lyrics normalized for display language=" + lyricCorrection.normalizedLyricsLanguage(lyricsLanguage));
 
-        List<OverlayCue> overlayCues = lyricOverlay.generate(displayWords, paths.overlayDir());
+        List<OverlayCue> overlayCues = lyricOverlay.generate(displayWords, paths.overlayDir(), textOptions);
         logProgress(60, "lyric overlays generated count=" + overlayCues.size());
 
         videoRenderer.render(hookAudio.toPath(), backgroundImage.toPath(), overlayCues, paths.outputPath(), ShortsFunnelService::logProgress);

@@ -8,6 +8,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.font.GlyphVector;
@@ -27,10 +28,9 @@ public final class LyricOverlayService {
     private static final int MAX_LINE_WORDS = 7;
     private static final double MAX_LINE_SECONDS = 3.8;
     private static final double LINE_BREAK_PAUSE_SECONDS = 0.45;
-    private static final String INTRO_TEXT = "Agar maa yaad aati hai, ruk jao...";
-    private static final String CTA_TEXT = "Pura gaana sunne ke liye 👇 Related Video pe click karein";
-
-    public List<OverlayCue> generate(List<TimedWord> words, Path overlayDir) throws IOException {
+    private static final String EMOJI_FONT_FAMILY = detectEmojiFontFamily();
+    public List<OverlayCue> generate(List<TimedWord> words, Path overlayDir, RenderTextOptions textOptions) throws IOException {
+        RenderTextOptions safeTextOptions = textOptions == null ? RenderTextOptions.defaults() : textOptions;
         log("generate:start overlayDir=" + overlayDir + " inputWords=" + words.size());
         Files.createDirectories(overlayDir);
         List<OverlayCue> cues = new ArrayList<>();
@@ -41,7 +41,7 @@ public final class LyricOverlayService {
         cues.add(new OverlayCue(cinematicOverlayPath, 0, ShortsRenderSpec.HOOK_SECONDS, 0, 0));
 
         Path introPath = overlayDir.resolve("intro-hook.png").toAbsolutePath().normalize();
-        OverlayImage introOverlay = writeTextOverlay(introPath, INTRO_TEXT, INTRO_Y, 70, 7, 900, new Color(255, 224, 58));
+        OverlayImage introOverlay = writeTextOverlay(introPath, safeTextOptions.introText(), INTRO_Y, 70, 7, 900, new Color(255, 224, 58));
         cues.add(new OverlayCue(introPath, 0, 2.4, introOverlay.x(), introOverlay.y()));
 
         List<LyricLine> lyricLines = buildLyricLines(words);
@@ -62,7 +62,7 @@ public final class LyricOverlayService {
         }
 
         Path ctaPath = overlayDir.resolve("cta.png").toAbsolutePath().normalize();
-        OverlayImage ctaOverlay = writeTextOverlay(ctaPath, CTA_TEXT, CTA_Y, 64, 7, 930, Color.WHITE);
+        OverlayImage ctaOverlay = writeTextOverlay(ctaPath, safeTextOptions.ctaText(), CTA_Y, 64, 7, 930, Color.WHITE);
         cues.add(new OverlayCue(ctaPath, ShortsRenderSpec.CTA_START_SECONDS,
                 ShortsRenderSpec.CTA_START_SECONDS + ShortsRenderSpec.CTA_DURATION_SECONDS, ctaOverlay.x(), ctaOverlay.y()));
 
@@ -137,7 +137,8 @@ public final class LyricOverlayService {
                                                  int outlineWidth, int maxWidth, Color fillColor) throws IOException {
         BufferedImage measurementImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D measurementGraphics = measurementImage.createGraphics();
-        Font font = new Font("SansSerif", Font.BOLD, fontSize);
+        Font font = textFont(fontSize);
+        Font emojiFont = emojiFont(fontSize);
         List<String> lines;
         FontMetrics metrics;
         int lineHeight;
@@ -148,7 +149,7 @@ public final class LyricOverlayService {
             lines = wrapText(text, metrics, maxWidth);
             lineHeight = metrics.getHeight();
             for (String line : lines) {
-                textWidth = Math.max(textWidth, metrics.stringWidth(line));
+                textWidth = Math.max(textWidth, textWidth(line, measurementGraphics, font, emojiFont));
             }
         } finally {
             measurementGraphics.dispose();
@@ -170,9 +171,8 @@ public final class LyricOverlayService {
             int baseline = padding + metrics.getAscent();
 
             for (String line : lines) {
-                GlyphVector glyphVector = font.createGlyphVector(graphics.getFontRenderContext(), line);
-                int x = imageWidth / 2 - metrics.stringWidth(line) / 2;
-                drawNeonText(graphics, glyphVector.getOutline(x, baseline), fillColor, new Color(0, 220, 255), outlineWidth);
+                int x = imageWidth / 2 - textWidth(line, graphics, font, emojiFont) / 2;
+                drawNeonString(graphics, line, x, baseline, font, emojiFont, fillColor, new Color(0, 220, 255), outlineWidth);
                 baseline += lineHeight;
             }
         } finally {
@@ -188,7 +188,8 @@ public final class LyricOverlayService {
                                                             int outlineWidth, int maxWidth) throws IOException {
         BufferedImage measurementImage = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D measurementGraphics = measurementImage.createGraphics();
-        Font font = new Font("SansSerif", Font.BOLD, fontSize);
+        Font font = textFont(fontSize);
+        Font emojiFont = emojiFont(fontSize);
         FontMetrics metrics;
         List<List<Integer>> visualLines;
         int lineHeight;
@@ -225,13 +226,12 @@ public final class LyricOverlayService {
                 for (int tokenIndex = 0; tokenIndex < visualLine.size(); tokenIndex++) {
                     int wordIndex = visualLine.get(tokenIndex);
                     String text = lineWords.get(wordIndex).word();
-                    GlyphVector glyphVector = font.createGlyphVector(graphics.getFontRenderContext(), text);
                     boolean active = wordIndex == activeWordIndex;
                     Color fill = active ? new Color(255, 244, 138) : Color.WHITE;
                     Color glow = active ? new Color(255, 56, 182) : new Color(0, 220, 255);
-                    drawNeonText(graphics, glyphVector.getOutline(x, baseline), fill, glow, outlineWidth);
+                    drawNeonString(graphics, text, x, baseline, font, emojiFont, fill, glow, outlineWidth);
 
-                    x += metrics.stringWidth(text);
+                    x += textWidth(text, graphics, font, emojiFont);
                     if (tokenIndex < visualLine.size() - 1) {
                         x += metrics.stringWidth(" ");
                     }
@@ -264,6 +264,100 @@ public final class LyricOverlayService {
         graphics.draw(shape);
         graphics.setColor(fillColor);
         graphics.fill(shape);
+    }
+
+    private static void drawNeonString(Graphics2D graphics, String text, int x, int baseline, Font textFont,
+                                       Font emojiFont, Color fillColor, Color glowColor, int outlineWidth) {
+        int cursor = x;
+        for (TextRun run : textRuns(text)) {
+            Font font = run.emoji() ? emojiFont : textFont;
+            graphics.setFont(font);
+            if (run.emoji()) {
+                drawEmoji(graphics, run.text(), cursor, baseline, glowColor);
+            } else {
+                GlyphVector glyphVector = font.createGlyphVector(graphics.getFontRenderContext(), run.text());
+                drawNeonText(graphics, glyphVector.getOutline(cursor, baseline), fillColor, glowColor, outlineWidth);
+            }
+            cursor += graphics.getFontMetrics(font).stringWidth(run.text());
+        }
+    }
+
+    private static void drawEmoji(Graphics2D graphics, String emoji, int x, int baseline, Color glowColor) {
+        graphics.setColor(withAlpha(glowColor, 90));
+        graphics.drawString(emoji, x - 2, baseline - 2);
+        graphics.drawString(emoji, x + 2, baseline - 2);
+        graphics.drawString(emoji, x - 2, baseline + 2);
+        graphics.drawString(emoji, x + 2, baseline + 2);
+        graphics.setColor(Color.WHITE);
+        graphics.drawString(emoji, x, baseline);
+    }
+
+    private static int textWidth(String text, Graphics2D graphics, Font textFont, Font emojiFont) {
+        int width = 0;
+        for (TextRun run : textRuns(text)) {
+            Font font = run.emoji() ? emojiFont : textFont;
+            width += graphics.getFontMetrics(font).stringWidth(run.text());
+        }
+        return width;
+    }
+
+    private static Font textFont(int fontSize) {
+        return new Font("SansSerif", Font.BOLD, fontSize);
+    }
+
+    private static Font emojiFont(int fontSize) {
+        return new Font(EMOJI_FONT_FAMILY, Font.PLAIN, fontSize);
+    }
+
+    private static String detectEmojiFontFamily() {
+        List<String> preferredFonts = List.of("Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", "EmojiOne Color");
+        List<String> availableFonts = List.of(GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getAvailableFontFamilyNames());
+        for (String preferredFont : preferredFonts) {
+            if (availableFonts.contains(preferredFont)) {
+                return preferredFont;
+            }
+        }
+        return "SansSerif";
+    }
+
+    private static List<TextRun> textRuns(String text) {
+        List<TextRun> runs = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean currentEmoji = false;
+        boolean hasCurrent = false;
+
+        for (int offset = 0; offset < text.length(); ) {
+            int codePoint = text.codePointAt(offset);
+            boolean emoji = isEmojiCodePoint(codePoint) || isEmojiJoiner(codePoint);
+            String value = new String(Character.toChars(codePoint));
+
+            if (hasCurrent && emoji != currentEmoji && !isEmojiJoiner(codePoint)) {
+                runs.add(new TextRun(current.toString(), currentEmoji));
+                current = new StringBuilder();
+                hasCurrent = false;
+            }
+
+            current.append(value);
+            currentEmoji = emoji || currentEmoji && isEmojiJoiner(codePoint);
+            hasCurrent = true;
+            offset += Character.charCount(codePoint);
+        }
+
+        if (hasCurrent) {
+            runs.add(new TextRun(current.toString(), currentEmoji));
+        }
+        return runs;
+    }
+
+    private static boolean isEmojiCodePoint(int codePoint) {
+        return codePoint >= 0x1F000 && codePoint <= 0x1FAFF
+                || codePoint >= 0x2600 && codePoint <= 0x27BF;
+    }
+
+    private static boolean isEmojiJoiner(int codePoint) {
+        return codePoint == 0x200D || codePoint == 0xFE0F || codePoint == 0xFE0E;
     }
 
     private static List<List<Integer>> wrapWordIndexes(List<TimedWord> words, FontMetrics metrics, int maxWidth) {
@@ -330,5 +424,8 @@ public final class LyricOverlayService {
     }
 
     private record LyricLine(List<TimedWord> words) {
+    }
+
+    private record TextRun(String text, boolean emoji) {
     }
 }

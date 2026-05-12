@@ -10,6 +10,8 @@ Zero-UI Spring Boot runner for a 59-second YouTube Shorts lyrical render.
 - Whisper language defaults to Hindi: `hi`.
 - Optional `lyricsHint` provides expected lyric context.
 - Optional `lyricsLanguage` controls display output: `hinglish`, `hindi`, or `english`.
+- Optional `introText` controls the opening overlay text.
+- Optional `ctaText` controls the final call-to-action overlay text.
 - A strict OpenAI text pass normalizes Whisper tokens for display while preserving timestamp slots.
 - Audio is compressed locally before Whisper to stay below OpenAI's request size limit.
 - FFmpeg renders locally. No Creatomate bill.
@@ -49,6 +51,8 @@ mp3=<59-second-hook.mp3>
 image=<background.jpg>
 lyricsHint=Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.
 lyricsLanguage=hinglish
+introText=Agar maa yaad aati hai, ruk jao... ❤️
+ctaText=Pura gaana sunne ke liye 👇 Related Video pe click karein
 ```
 
 `lyricsLanguage` values:
@@ -72,7 +76,7 @@ whisperInputPath=compressed audio sent to Whisper
 
 ```bash
 mvn spring-boot:run \
-  -Dspring-boot.run.arguments="--mp3=/absolute/path/hook-59s.mp3 --image=/absolute/path/background.jpg --output-dir=outputs --lyrics-language=hinglish --lyrics-hint='Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.'"
+  -Dspring-boot.run.arguments="--mp3=/absolute/path/hook-59s.mp3 --image=/absolute/path/background.jpg --output-dir=outputs --lyrics-language=hinglish --lyrics-hint='Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.' --intro-text='Agar maa yaad aati hai, ruk jao... ❤️' --cta-text='Pura gaana sunne ke liye 👇 Related Video pe click karein'"
 ```
 # MusicLoad Shorts Funnel
 

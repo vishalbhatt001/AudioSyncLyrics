@@ -1,6 +1,7 @@
 package in.pipeline.runner;
 
 import in.pipeline.service.ShortsFunnelService;
+import in.pipeline.service.RenderTextOptions;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -28,10 +29,12 @@ public final class ShortsCliRunner implements ApplicationRunner {
         Path outputDir = Path.of(optionalArg(args, "output-dir", "outputs"));
         String lyricsHint = optionalArg(args, "lyrics-hint", "");
         String lyricsLanguage = optionalArg(args, "lyrics-language", "hinglish");
+        String introText = optionalArg(args, "intro-text", "");
+        String ctaText = optionalArg(args, "cta-text", "");
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             executor.submit(() -> {
-                renderer.renderLocal(mp3Path, imagePath, outputDir, lyricsHint, lyricsLanguage);
+                renderer.renderLocal(mp3Path, imagePath, outputDir, lyricsHint, lyricsLanguage, new RenderTextOptions(introText, ctaText));
                 return null;
             }).get();
         }
