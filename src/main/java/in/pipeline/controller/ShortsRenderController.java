@@ -4,6 +4,7 @@ import in.pipeline.controller.request.ShortsRenderRequest;
 import in.pipeline.service.ShortsFunnelService;
 import in.pipeline.service.ShortsFunnelService.RenderResult;
 import in.pipeline.service.RenderTextOptions;
+import in.pipeline.service.VisualMediaAsset;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
@@ -22,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -39,7 +42,7 @@ public final class ShortsRenderController {
         this.uploadRoot = Path.of(environment.getProperty("musicload.upload-dir", "uploads")).toAbsolutePath().normalize();
     }
 
-    @Operation(summary = "Upload 59s MP3 hook and background image, then render a local 1080x1920 MP4")
+    @Operation(summary = "Upload 59s MP3 hook and four images/videos, then render a local 1080x1920 MP4")
     @PostMapping(
             value = "/renders",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -53,16 +56,21 @@ public final class ShortsRenderController {
         Files.createDirectories(jobDir);
 
         Path mp3Path = saveUpload(request.getMp3(), jobDir, "hook.mp3");
-        Path imagePath = saveUpload(request.getImage(), jobDir, "background.jpg");
+        List<Path> mediaPaths = saveMediaUploads(request.mediaFiles(), jobDir);
+        List<VisualMediaAsset> mediaAssets = mediaPaths.stream()
+                .map(VisualMediaAsset::from)
+                .toList();
 
         String normalizedBaseUrl = stripTrailingSlash(currentBaseUrl());
         String mp3Url = normalizedBaseUrl + "/assets/" + jobId + "/" + urlSegment(mp3Path.getFileName().toString());
-        String imageUrl = normalizedBaseUrl + "/assets/" + jobId + "/" + urlSegment(imagePath.getFileName().toString());
+        List<String> mediaUrls = mediaPaths.stream()
+                .map(path -> normalizedBaseUrl + "/assets/" + jobId + "/" + urlSegment(path.getFileName().toString()))
+                .toList();
         String outputUrl = normalizedBaseUrl + "/assets/" + jobId + "/shorts-output.mp4";
 
         RenderResult renderResult = renderer.renderUploaded(
                 mp3Path.toFile(),
-                imagePath.toFile(),
+                mediaAssets,
                 jobDir,
                 request.getLyricsHint(),
                 request.normalizedLyricsLanguage(),
@@ -72,7 +80,7 @@ public final class ShortsRenderController {
         return ResponseEntity.ok(Map.of(
                 "jobId", jobId,
                 "mp3Url", mp3Url,
-                "imageUrl", imageUrl,
+                "mediaUrls", mediaUrls,
                 "outputUrl", outputUrl,
                 "outputPath", renderResult.outputPath().toString(),
                 "overlayDirPath", renderResult.overlayDirPath().toString(),
@@ -82,12 +90,24 @@ public final class ShortsRenderController {
         ));
     }
 
+    private static List<Path> saveMediaUploads(List<MultipartFile> files, Path jobDir) throws IOException {
+        List<Path> mediaPaths = new ArrayList<>();
+        for (int index = 0; index < files.size(); index++) {
+            mediaPaths.add(saveUpload(files.get(index), jobDir, "media-%02d".formatted(index + 1), "media-%02d-".formatted(index + 1)));
+        }
+        return List.copyOf(mediaPaths);
+    }
+
     private static Path saveUpload(MultipartFile file, Path jobDir, String fallbackName) throws IOException {
+        return saveUpload(file, jobDir, fallbackName, "");
+    }
+
+    private static Path saveUpload(MultipartFile file, Path jobDir, String fallbackName, String filenamePrefix) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Empty upload: " + fallbackName);
         }
 
-        String filename = safeFilename(file.getOriginalFilename(), fallbackName);
+        String filename = filenamePrefix + safeFilename(file.getOriginalFilename(), fallbackName);
         Path target = jobDir.resolve(filename).normalize();
         if (!target.startsWith(jobDir)) {
             throw new IllegalArgumentException("Invalid upload filename: " + filename);

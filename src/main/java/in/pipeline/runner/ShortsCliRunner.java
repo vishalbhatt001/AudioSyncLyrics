@@ -25,7 +25,7 @@ public final class ShortsCliRunner implements ApplicationRunner {
         }
 
         String mp3Path = requiredArg(args, "mp3");
-        String imagePath = requiredArg(args, "image");
+        List<String> mediaPaths = requiredArgs(args, "media", 4);
         Path outputDir = Path.of(optionalArg(args, "output-dir", "outputs"));
         String lyricsHint = optionalArg(args, "lyrics-hint", "");
         String lyricsLanguage = optionalArg(args, "lyrics-language", "hinglish");
@@ -34,7 +34,7 @@ public final class ShortsCliRunner implements ApplicationRunner {
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             executor.submit(() -> {
-                renderer.renderLocal(mp3Path, imagePath, outputDir, lyricsHint, lyricsLanguage, new RenderTextOptions(introText, ctaText));
+                renderer.renderLocal(mp3Path, mediaPaths, outputDir, lyricsHint, lyricsLanguage, new RenderTextOptions(introText, ctaText));
                 return null;
             }).get();
         }
@@ -46,6 +46,14 @@ public final class ShortsCliRunner implements ApplicationRunner {
             throw new IllegalArgumentException("Missing required arg: --" + name);
         }
         return values.getFirst();
+    }
+
+    private static List<String> requiredArgs(ApplicationArguments args, String name, int expectedCount) {
+        List<String> values = args.getOptionValues(name);
+        if (values == null || values.size() != expectedCount || values.stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException("Expected exactly " + expectedCount + " values for --" + name);
+        }
+        return List.copyOf(values);
     }
 
     private static String optionalArg(ApplicationArguments args, String name, String fallback) {

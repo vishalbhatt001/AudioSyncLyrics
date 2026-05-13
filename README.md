@@ -16,6 +16,8 @@ Zero-UI Spring Boot runner for a 59-second YouTube Shorts lyrical render.
 - Audio is compressed locally before Whisper to stay below OpenAI's request size limit.
 - FFmpeg renders locally. No Creatomate bill.
 - Output MP4 is hardcoded to `1080x1920`.
+- Upload exactly four images or exactly four videos for the background media.
+- Background media plays in 4-second slots: `media1`, `media2`, `media3`, `media4`, then repeats circularly until 59 seconds. The final slot is trimmed.
 - Lyrics render as karaoke-style neon lines with current word highlighted.
 
 ## Config
@@ -48,7 +50,10 @@ POST /api/shorts/renders
 Content-Type: multipart/form-data
 
 mp3=<59-second-hook.mp3>
-image=<background.jpg>
+media1=<image-or-video-1>
+media2=<image-or-video-2>
+media3=<image-or-video-3>
+media4=<image-or-video-4>
 lyricsHint=Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.
 lyricsLanguage=hinglish
 introText=Agar maa yaad aati hai, ruk jao... ❤️
@@ -67,6 +72,7 @@ Response includes:
 
 ```text
 outputUrl=http://localhost:9099/assets/{jobId}/shorts-output.mp4
+mediaUrls=uploaded local asset URLs
 outputPath=local filesystem path
 overlayDirPath=generated transparent lyric PNG overlays
 whisperInputPath=compressed audio sent to Whisper
@@ -76,7 +82,7 @@ whisperInputPath=compressed audio sent to Whisper
 
 ```bash
 mvn spring-boot:run \
-  -Dspring-boot.run.arguments="--mp3=/absolute/path/hook-59s.mp3 --image=/absolute/path/background.jpg --output-dir=outputs --lyrics-language=hinglish --lyrics-hint='Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.' --intro-text='Agar maa yaad aati hai, ruk jao... ❤️' --cta-text='Pura gaana sunne ke liye 👇 Related Video pe click karein'"
+  -Dspring-boot.run.arguments="--mp3=/absolute/path/hook-59s.mp3 --media=/absolute/path/media-1.mp4 --media=/absolute/path/media-2.mp4 --media=/absolute/path/media-3.mp4 --media=/absolute/path/media-4.mp4 --output-dir=outputs --lyrics-language=hinglish --lyrics-hint='Transcribe Hindi song lyrics in Hinglish/Roman Hindi. Do not use Devanagari.' --intro-text='Agar maa yaad aati hai, ruk jao... ❤️' --cta-text='Pura gaana sunne ke liye 👇 Related Video pe click karein'"
 ```
 # MusicLoad Shorts Funnel
 

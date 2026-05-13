@@ -35,41 +35,44 @@ public final class ShortsFunnelService {
 
     public RenderResult renderUploaded(
             File hookAudio,
-            File backgroundImage,
+            List<VisualMediaAsset> mediaAssets,
             Path jobDir,
             String lyricsHint,
             String lyricsLanguage,
             RenderTextOptions textOptions
     ) throws Exception {
-        log("renderUploaded:start audio=" + hookAudio + " image=" + backgroundImage + " jobDir=" + jobDir);
-        validateInputFiles(hookAudio, backgroundImage);
+        log("renderUploaded:start audio=" + hookAudio + " mediaCount=" + mediaAssets.size() + " jobDir=" + jobDir);
+        validateInputFiles(hookAudio, mediaAssets);
         Files.createDirectories(jobDir);
-        RenderResult result = render(hookAudio, backgroundImage, jobDir, lyricsHint, lyricsLanguage, textOptions);
+        RenderResult result = render(hookAudio, mediaAssets, jobDir, lyricsHint, lyricsLanguage, textOptions);
         log("renderUploaded:done output=" + result.outputPath());
         return result;
     }
 
     public RenderResult renderLocal(
             String hookAudioPath,
-            String imagePath,
+            List<String> mediaPaths,
             Path outputDir,
             String lyricsHint,
             String lyricsLanguage,
             RenderTextOptions textOptions
     ) throws Exception {
-        log("renderLocal:start audio=" + hookAudioPath + " image=" + imagePath + " outputDir=" + outputDir);
+        log("renderLocal:start audio=" + hookAudioPath + " mediaCount=" + mediaPaths.size() + " outputDir=" + outputDir);
         File hookAudio = new File(hookAudioPath);
-        File backgroundImage = new File(imagePath);
-        validateInputFiles(hookAudio, backgroundImage);
+        List<VisualMediaAsset> mediaAssets = mediaPaths.stream()
+                .map(Path::of)
+                .map(VisualMediaAsset::from)
+                .toList();
+        validateInputFiles(hookAudio, mediaAssets);
         Files.createDirectories(outputDir);
-        RenderResult result = render(hookAudio, backgroundImage, outputDir, lyricsHint, lyricsLanguage, textOptions);
+        RenderResult result = render(hookAudio, mediaAssets, outputDir, lyricsHint, lyricsLanguage, textOptions);
         log("renderLocal:done output=" + result.outputPath());
         return result;
     }
 
     private RenderResult render(
             File hookAudio,
-            File backgroundImage,
+            List<VisualMediaAsset> mediaAssets,
             Path outputDir,
             String lyricsHint,
             String lyricsLanguage,
@@ -91,7 +94,7 @@ public final class ShortsFunnelService {
         List<OverlayCue> overlayCues = lyricOverlay.generate(displayWords, paths.overlayDir(), textOptions);
         logProgress(60, "lyric overlays generated count=" + overlayCues.size());
 
-        videoRenderer.render(hookAudio.toPath(), backgroundImage.toPath(), overlayCues, paths.outputPath(), ShortsFunnelService::logProgress);
+        videoRenderer.render(hookAudio.toPath(), mediaAssets, overlayCues, paths.outputPath(), ShortsFunnelService::logProgress);
 
         logProgress(100, "render:done output=" + paths.outputPath());
         return new RenderResult(paths.outputPath(), paths.overlayDir(), paths.whisperInputPath(), displayWords.size(), ShortsRenderSpec.HOOK_SECONDS);
@@ -106,15 +109,21 @@ public final class ShortsFunnelService {
         return value;
     }
 
-    private static void validateInputFiles(File hookAudio, File backgroundImage) {
+    private static void validateInputFiles(File hookAudio, List<VisualMediaAsset> mediaAssets) {
         log("validateInputFiles:start");
         if (!hookAudio.isFile()) {
             throw new IllegalArgumentException("Missing 59-second hook audio: " + hookAudio);
         }
-        if (!backgroundImage.isFile()) {
-            throw new IllegalArgumentException("Missing background image: " + backgroundImage);
+        MediaTimelinePlanner.validateMediaAssets(mediaAssets);
+        for (VisualMediaAsset mediaAsset : mediaAssets) {
+            if (!mediaAsset.path().toFile().isFile()) {
+                throw new IllegalArgumentException("Missing media asset: " + mediaAsset.path());
+            }
         }
-        log("validateInputFiles:done audioBytes=" + hookAudio.length() + " imageBytes=" + backgroundImage.length());
+        long mediaBytes = mediaAssets.stream()
+                .mapToLong(mediaAsset -> mediaAsset.path().toFile().length())
+                .sum();
+        log("validateInputFiles:done audioBytes=" + hookAudio.length() + " mediaCount=" + mediaAssets.size() + " mediaBytes=" + mediaBytes);
     }
 
     private static void log(String message) {
